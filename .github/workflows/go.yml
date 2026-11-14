@@ -12,7 +12,10 @@ jobs:
           go-version-file: go.mod
       - run: go test ./...
       - run: go vet ./...
-      - run: go build -trimpath -o dist/m4s-converter-bv.exe .
+      - shell: pwsh
+        env:
+          BUILD_COMMIT: ${{ github.sha }}
+        run: go build -trimpath -ldflags "-X m4s-converter/common.sourceVer=$env:BUILD_COMMIT -X 'm4s-converter/common.buildTime=GitHub-Actions-Windows-amd64'" -o dist/m4s-converter-bv.exe .
       - shell: pwsh
         run: |
           Copy-Item scripts/select-bv.cmd dist/
@@ -22,3 +25,29 @@ jobs:
         with:
           name: m4s-converter-bv-windows-amd64
           path: m4s-converter-bv-windows-amd64.zip
+  release:
+    if: github.event_name == 'workflow_dispatch'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: m4s-converter-bv-windows-amd64
+          path: release
+      - name: Publish Windows preview
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_COMMIT: ${{ github.sha }}
+        run: |
+          cd release
+          sha256sum m4s-converter-bv-windows-amd64.zip > SHA256SUMS.txt
+          if gh release view v1.5.7-bv.1 >/dev/null 2>&1; then
+            gh release upload v1.5.7-bv.1 m4s-converter-bv-windows-amd64.zip SHA256SUMS.txt --clobber
+            gh release edit v1.5.7-bv.1 --draft=false --prerelease
+          else
+            gh release create v1.5.7-bv.1 m4s-converter-bv-windows-amd64.zip SHA256SUMS.txt --target "$RELEASE_COMMIT" --title 'BV 筛选版 v1.5.7-bv.1（Windows）' --notes-file ../README-BV.md --prerelease
+          fi
