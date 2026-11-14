@@ -1,28 +1,24 @@
-# This workflow will build a golang project
-# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-go
-
-name: Go
-
-on:
-  push:
-    branches: [ "master" ]
-  pull_request:
-    branches: [ "master" ]
-
+name: Build and test
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
 jobs:
-
   build:
     runs-on: windows-latest
     steps:
-    - uses: actions/checkout@v3
-
-    - name: Set up Go
-      uses: actions/setup-go@v4
-      with:
-        go-version: '1.20'
-
-    - name: Build
-      run: set GOARCH=386;go build -ldflags "-w -s"
-
-    - name: Test
-      run: go test -v ./...
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: go test ./...
+      - run: go vet ./...
+      - run: go build -trimpath -o dist/m4s-converter-bv.exe .
+      - shell: pwsh
+        run: |
+          Copy-Item scripts/select-bv.cmd dist/
+          Copy-Item README-BV.md,LICENSE dist/
+          Compress-Archive -Path dist/* -DestinationPath m4s-converter-bv-windows-amd64.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: m4s-converter-bv-windows-amd64
+          path: m4s-converter-bv-windows-amd64.zip

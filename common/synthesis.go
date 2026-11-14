@@ -18,6 +18,18 @@ import (
 
 func (c *Config) Synthesis() {
 	begin := time.Now().Unix()
+	var dirs []string
+	var err error
+	if c.BVs != "" || c.SelectBV || c.ListOnly {
+		dirs, err = c.prepareSelection()
+		if err != nil {
+			logrus.Error(err)
+			return
+		}
+		if c.ListOnly {
+			return
+		}
+	}
 	logrus.Println("查找缓存目录下可转换的文件...")
 	// 查找m4s文件，并转换为mp4和mp3
 	if err := filepath.WalkDir(c.CachePath, c.FindM4sFiles); err != nil {
@@ -25,7 +37,9 @@ func (c *Config) Synthesis() {
 		c.wait()
 	}
 
-	dirs, err := GetCacheDir(c.CachePath) // 缓存根目录模式
+	if c.selected == nil {
+		dirs, err = GetCacheDir(c.CachePath) // 缓存根目录模式
+	}
 	if err != nil {
 		MessageBox(fmt.Sprintf("找不到 BiliBili 的缓存目录：%v", err))
 		c.wait()
@@ -40,7 +54,10 @@ func (c *Config) Synthesis() {
 	}
 
 	// 合成音视频文件
-	c.OutputDir = filepath.Join(c.CachePath, "output")
+	c.OutputDir = c.OutputRoot
+	if c.OutputDir == "" {
+		c.OutputDir = filepath.Join(c.CachePath, "output")
+	}
 	var outputFiles []string
 	var skipFilePaths []string
 	for _, v := range dirs {
@@ -108,6 +125,12 @@ func (c *Config) Synthesis() {
 			_ = os.MkdirAll(c.OutputDir, os.ModePerm)
 		}
 		groupPath := groupTitle + "-" + uname
+		if entry, ok := c.selected[v]; ok {
+			groupPath = entry.BV
+			// Keep parts and different cache items separate even if titles are identical.
+			title = fmt.Sprintf("P%d_%s_%s", entry.Part, filepath.Base(entry.Dir), title)
+			part = title
+		}
 		groupDir := filepath.Join(c.OutputDir, groupPath)
 		if !utils.IsExist(groupDir) {
 			if err = os.MkdirAll(groupDir, os.ModePerm); err != nil {
@@ -145,9 +168,11 @@ func (c *Config) Synthesis() {
 		}
 
 		// 检查目录中是否存在与输入音频和视频文件内容相同的文件
-		if exists, existingFile := c.isIdenticalFileExists(groupDir, video, audio, part); exists {
-			logrus.Warn("跳过完全相同的视频: ", existingFile)
-			continue
+		if c.selected == nil {
+			if exists, existingFile := c.isIdenticalFileExists(groupDir, video, audio, part); exists {
+				logrus.Warn("跳过完全相同的视频: ", existingFile)
+				continue
+			}
 		}
 
 		// 执行合成

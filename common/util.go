@@ -21,6 +21,12 @@ import (
 )
 
 type Config struct {
+	All        bool
+	BVs        string
+	SelectBV   bool
+	ListOnly   bool
+	OutputRoot string
+	selected   map[string]cacheEntry
 	CachePath  string
 	Overlay    bool
 	AssPath    string
@@ -102,6 +108,17 @@ func (c *Config) FindM4sFiles(src string, info os.DirEntry, err error) error {
 		return err
 	}
 	// 查找.m4s文件
+	if info.Type()&os.ModeSymlink != 0 {
+		return nil
+	}
+	if info.IsDir() && src != c.CachePath && (strings.EqualFold(info.Name(), "output") || within(src, c.OutputRoot)) {
+		return filepath.SkipDir
+	}
+	if c.selected != nil && !info.IsDir() {
+		if _, ok := c.selected[filepath.Dir(src)]; !ok {
+			return nil
+		}
+	}
 	if strings.HasSuffix(info.Name(), conver.M4sSuffix) {
 		var dst string
 		videoId, audioId := GetVAId(src)
@@ -237,7 +254,7 @@ func (c *Config) copyFile(src, dst string) error {
 	}
 
 	// 使用缓冲读取器逐块读取并写入文件
-	if _, err := io.Copy(bufio.NewWriter(dstFile), bufio.NewReader(srcFile)); err != nil {
+	if _, err := io.Copy(dstFile, bufio.NewReader(srcFile)); err != nil {
 		logrus.Errorf("读取或写入文件失败: %v", err)
 		return err
 	}

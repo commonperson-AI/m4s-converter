@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/user"
 	"path/filepath"
+	"runtime"
 	"time"
 
 	"github.com/Masterminds/semver"
@@ -30,8 +31,22 @@ func (c *Config) flag() {
 	flaggy.Bool(&c.Summarize, "u", "summarize", "将未合并的MP3和视频文件放入汇总目录，默认不汇总")
 	flaggy.String(&c.CachePath, "c", "cachepath", "自定义视频缓存路径，默认使用bilibili的默认缓存路径")
 	flaggy.String(&c.GPACPath, "g", "gpacpath", "自定义GPAC的mp4box文件路径,值为select时弹出选择对话框")
+	flaggy.Bool(&c.All, "", "all", "明确转换全部缓存；不允许与 BV 筛选同时使用")
+	flaggy.String(&c.BVs, "", "bv", "仅转换指定 BV，多个用空格或逗号分隔，也支持视频链接")
+	flaggy.Bool(&c.SelectBV, "", "select", "列出缓存并交互输入 BV；空输入取消")
+	flaggy.Bool(&c.ListOnly, "", "list", "仅列出缓存，不转换")
+	flaggy.String(&c.OutputRoot, "", "output-dir", "自定义输出根目录，筛选时按 BV 号分组")
 	flaggy.ShowHelpOnUnexpectedEnable() // 解析到未预期参数时显示帮助
 	flaggy.Parse()
+	if c.All && (c.BVs != "" || c.SelectBV || c.ListOnly) {
+		logrus.Fatal("--all 不能与 --bv、--select 或 --list 同时使用")
+	}
+	if !c.All && c.BVs == "" && !c.ListOnly {
+		c.SelectBV = true
+	}
+	if c.CachePath == "" && runtime.GOOS == "windows" {
+		c.CachePath = `D:\BaiduNetdiskDownload\bilibili`
+	}
 	if ver {
 		fmt.Println(color.CyanString("当前版本: %s", version))
 		fmt.Println(color.CyanString("编译信息: %s", buildTime))
@@ -44,9 +59,9 @@ func (c *Config) flag() {
 			c.SelectGPACPath()
 			logrus.Warnln("使用MP4Box进行音视频合成")
 		}
-		return
+	} else {
+		c.GPACPath = internal.GetMP4Box()
 	}
-	c.GPACPath = internal.GetMP4Box()
 	logrus.Warnln("使用MP4Box进行音视频合成")
 	if c.CachePath == "" {
 		if err != nil {
@@ -77,7 +92,8 @@ func (c *Config) InitConfig() {
 	_, _ = fmt.Scanln()
 	logrus.Info("用户同意使用，程序继续执行")
 
-	diffVersion()
+	// This fork has a separate release stream; do not suggest an upstream replacement.
+
 }
 
 func diffVersion() {
